@@ -57,6 +57,25 @@ union v4
         };
         real32 a;
     };
+    struct
+    {
+        v2 xy;
+        real32 ignored0_;
+        real32 ignored1_;
+    };
+    struct
+    {
+        real32 ignored2_;        
+        v2 yz;
+        real32 ignored3_;
+    };
+    struct
+    {
+        real32 ignored4_;
+        real32 ignored5_;
+        v2 zw;
+    };
+    
     real32 e[4];
 };
 
@@ -469,17 +488,17 @@ Inner(v3 a, v3 b)
 }
 
 inline real32
-LengthSq(v3 a)
+Length(v3 a)
 {
-    real32 result = Inner(a, a);
+    real32 result = Root2(Inner(a, a));
 
     return result;
 }
 
 inline real32
-Length(v3 a)
+LengthSq(v3 a)
 {
-    real32 result = Root2(Inner(a, a));
+    real32 result = Inner(a, a);
 
     return result;
 }
@@ -889,6 +908,20 @@ ToV4(v3 xyz, real32 w)
     result.y = xyz.y;
     result.z = xyz.z;
     result.w = w;
+
+    return result;
+}
+
+inline v3
+Normalize(v3 vector)
+{
+    v3 result;
+
+    real32 length = Length(vector);
+    
+    result.x = vector.x / length;
+    result.y = vector.y / length;
+    result.z = vector.z / length;
 
     return result;
 }

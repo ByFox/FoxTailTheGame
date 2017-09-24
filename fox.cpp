@@ -5,6 +5,7 @@
 #include "fox_sim_region.h"
 #include "fox_entity.h"
 #include "fox_world.cpp"
+
 // #include "fox_entity.cpp"
 #include "fox_sim_region.cpp"
 
@@ -209,16 +210,16 @@ AddLowEntity(game_state *gameState, entity_type type, world_position worldPositi
     return result;
 }
 
+// Draw grounded low entities
 internal add_low_entity_result
 AddGroundedLowEntity(game_state *gameState, entity_type type, world_position worldPosition,
                     sim_entity_collision_volume_group *collisionGroup)
 {
     add_low_entity_result result = AddLowEntity(gameState, type, worldPosition);
-
     result.low->sim.collision = collisionGroup;
+
     return result;
 }
-
 
 internal void
 InitHitPoints(low_entity *low, uint32 hitPointCount)
@@ -352,6 +353,7 @@ AddWall(game_state *gameState, uint32 absTileX, uint32 absTileY, uint32 absTileZ
     return entity;
 }
 
+// DrawHitPoints
 internal void
 DrawHitpoints(sim_entity *entity, render_group *pieceGroup)
 {
@@ -498,6 +500,52 @@ MakeEmptyBitmap(memory_arena *arena, int32 width, int32 height, bool32 shouldBeC
     return result;
 }
 
+
+internal void
+MakeSphereDiffuseMap(loaded_bitmap *bitmap, real32 Cx = 1.0f, real32 Cy = 1.0f)
+{
+    real32 InvWidth = 1.0f / (real32)(bitmap->width - 1);
+    real32 InvHeight = 1.0f / (real32)(bitmap->height - 1);
+    
+    uint8 *row = (uint8 *)bitmap->memory;
+    for(int32 y = 0;
+        y < bitmap->height;
+        ++y)
+    {
+        uint32 *pixel = (uint32 *)row;
+        for(int32 x = 0;
+            x < bitmap->width;
+            ++x)
+        {
+            v2 bitmapUV = {InvWidth*(real32)x, InvHeight*(real32)y};
+
+            real32 Nx = Cx*(2.0f*bitmapUV.x - 1.0f);
+            real32 Ny = Cy*(2.0f*bitmapUV.y - 1.0f);
+
+            real32 rootTerm = 1.0f - Nx*Nx - Ny*Ny;
+            real32 alpha = 0.0f;            
+            if(rootTerm >= 0.0f)
+            {
+                alpha = 1.0f;
+            }
+
+            v3 baseColor = {0.0f, 0.0f, 0.0f};
+            alpha *= 255.0f;
+            v4 color = {alpha*baseColor.x,
+                        alpha*baseColor.y,
+                        alpha*baseColor.z,
+                        alpha};
+
+            *pixel++ = (((uint32)(color.a + 0.5f) << 24) |
+                        ((uint32)(color.r + 0.5f) << 16) |
+                        ((uint32)(color.g + 0.5f) << 8) |
+                        ((uint32)(color.b + 0.5f) << 0));
+        }
+
+        row += bitmap->pitch;
+    }
+}
+
 internal void
 MakeSphereNormalMap(loaded_bitmap *bitmap, real32 roughness)
 {
@@ -510,7 +558,6 @@ MakeSphereNormalMap(loaded_bitmap *bitmap, real32 roughness)
         ++y)
     {
         uint32 *pixel = (uint32 *)row;
-
         for(int32 x = 0;
             x < bitmap->width;
             ++x)
@@ -519,10 +566,11 @@ MakeSphereNormalMap(loaded_bitmap *bitmap, real32 roughness)
 
             real32 nX = 2.0f*bitmapUV.x - 1.0f;
             real32 nY = 2.0f*bitmapUV.y - 1.0f;
+
             real32 rootTerm = 1.0f - nX*nX - nY*nY;
             
             // Normal is in -101 space!
-            v3 normal = {0.0f, 0.0f, 1.0f};
+            v3 normal = {0, 0.707106781188f, 0.707106781188f};
             real32 nZ = 0.0f;
             if(rootTerm >= 0.0f)
             {
@@ -535,12 +583,10 @@ MakeSphereNormalMap(loaded_bitmap *bitmap, real32 roughness)
                         255.0f*(0.5f*(normal.z + 1.0f)),
                         255.0f*roughness};
             
-            uint32 value = (((uint32)(color.a + 0.5f) << 24) |
+            *pixel++ = (((uint32)(color.a + 0.5f) << 24) |
                             ((uint32)(color.r + 0.5f) << 16) |
                             ((uint32)(color.g + 0.5f) << 8) |
                             ((uint32)(color.b + 0.5f) << 0));
-
-            *pixel++ = value;
         }
 
         row += bitmap->pitch;
@@ -873,11 +919,11 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         FillGroundChunks(tranState, gameState, &tranState->groundBuffers[0], &gameState->cameraPos);
         
         gameState->diff = MakeEmptyBitmap(&tranState->tranArena, gameState->tree.width, gameState->tree.height, false);
-        DrawRectangle(&gameState->diff, V2(0, 0), V2i(gameState->diff.width, gameState->diff.height), V4(0.3f, 0.3f, 0.3f, 1.0f));
         
         gameState->diffNormal = MakeEmptyBitmap(&tranState->tranArena, gameState->diff.width, gameState->diff.height, false);
         MakeSphereNormalMap(&gameState->diffNormal, 0.0f);
-
+        MakeSphereDiffuseMap(&gameState->diff);
+        
         tranState->envMapWidth = 512;
         tranState->envMapHeight = 256;
         
@@ -1297,13 +1343,6 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     }
 
     {
-        gameState->time += input->dtForFrame;
-
-        real32 angle = 0.4f*gameState->time;
-        real32 disp = 10.0f*Cos(10.0f*angle);
-
-        angle = 0.0f;
-
         int32 checkerWidth = 16;
         int32 checkerHeight = 16;
         v4 mapColor[] = 
@@ -1317,6 +1356,7 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
             ++mapIndex)
         {
             loaded_bitmap *lod = tranState->envMaps[mapIndex].lod + 0;
+            // TODO : This name must be changed?
             bool32 shouldBeColor = true;
             for(int32 y = 0;
                 y < lod->height;
@@ -1344,11 +1384,20 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
             }
         }
         
-        angle = 0.0f;
+        tranState->envMaps[0].pZ = -1.5f;
+        tranState->envMaps[1].pZ = 0.0f;
+        tranState->envMaps[2].pZ = 1.5f;
+        
+        gameState->time += input->dtForFrame;
+        
+        real32 angle = 0.4f*gameState->time;
+        v2 disp = {100.0f*Cos(5.0f*angle),
+                    100.0f*Sin(3.0f*angle)};
+
         v2 origin = screenCenter;
 
 #if 1
-        v2 xAxis = Cos(angle)*150.0f*V2(Cos(angle), Sin(angle));
+        v2 xAxis = 100.0f*V2(Cos(angle), Sin(angle));
         v2 yAxis = V2(-xAxis.y, xAxis.x);
 #else
         v2 xAxis = V2(300.0f, 0.0f);
@@ -1364,14 +1413,12 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
         render_group_entry_coordinate_system *c = 
             PushCoordinateSystem(renderGroup, &gameState->diff, 
-                                origin - 0.5f*xAxis - 0.5f*yAxis, xAxis, yAxis, 
+                                origin - 0.5f*xAxis - 0.5f*yAxis + disp, xAxis, yAxis, 
                                 color,
                                 &gameState->diffNormal, 
                                 tranState->envMaps + 0, 
                                 tranState->envMaps + 1, 
                                 tranState->envMaps + 2);
-
-
         
         // NOTE : Drawing Envmaps for debugging purpose!
         v2 mapPos = {0.0f, 5.0f};

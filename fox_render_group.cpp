@@ -102,18 +102,41 @@ BilinearSample(loaded_bitmap *texture, int x, int y)
 }
 
 inline v3 
-SampleEnvironmentMap(v2 screenSpaceUV, v3 sampleBounce, v3 normal, real32 roughness, enviromnet_map *map)
+SampleEnvironmentMap(v2 screenSpaceUV, v3 sampleDirection, real32 roughness, enviromnet_map *map, real32 distanceFromMapInZ)
 {
-    uint32 lodIndex = (uint32)(roughness * (real32)(ArrayCount(map->lod) - 1.0f) + 0.5f);
+    /* NOTE :
+
+       ScreenSpaceUV tells us where the ray is being cast _from_ in
+       normalized screen coordinates.
+
+       SampleDirection tells us what direction the cast is going -
+       it does not have to be normalized.
+
+       Roughness says which LODs of Map we sample from.
+
+       DistanceFromMapInZ says how far the map is from the sample point in Z, given
+       in meters.
+    */
+
+    // NOTE : Pick which LOD to sample from
+    uint32 lodIndex = (uint32)(roughness * (real32)(ArrayCount(map->lod) - 1) + 0.5f);
     Assert(lodIndex < ArrayCount(map->lod));
 
     loaded_bitmap *lod = &map->lod[lodIndex];
 
-    real32 distanceFromMiddle = 0.01f;
-    real32 c = distanceFromMiddle / sampleBounce.y;
-    v2 offset = c * V2(sampleBounce.x, sampleBounce.z);
+    // NOTE  Compute the distance to the map and the scaling
+    // factor for meters to UVs
+    real32 uvsPerMeter = 0.1f;
+    real32 c = (uvsPerMeter*distanceFromMapInZ) / sampleDirection.y;
+    v2 offset = c * V2(sampleDirection.x, sampleDirection.z);
+
+    // NOTE : Find the intersection point
     v2 uv = screenSpaceUV + offset;
 
+    uv.x = Clamp01(uv.x);
+    uv.y = Clamp01(uv.y);
+    
+    // NOTE : Bilinear sample
     real32 tX = (uv.x*(real32)(lod->width - 2));
     real32 tY = (uv.y*(real32)(lod->height - 2));
 
@@ -123,8 +146,13 @@ SampleEnvironmentMap(v2 screenSpaceUV, v3 sampleBounce, v3 normal, real32 roughn
     real32 fX = tX - (real32)x;
     real32 fY = tX - (real32)y;
 
-    bilinear_sample sample = BilinearSample(lod, x, y);
+#if 0
+    // NOTE(casey): Turn this on to see where in the map you're sampling!
+    uint8 *TexelPtr = ((uint8 *)LOD->Memory) + Y*LOD->Pitch + X*sizeof(uint32);
+    *(uint32 *)TexelPtr = 0xFFFFFFFF;
+#endif
 
+    bilinear_sample sample = BilinearSample(lod, x, y);
     v3 result = SRGBBilinearBlend(sample, fX, fY).xyz;
 
     return result;
@@ -211,22 +239,39 @@ DrawRectangleSlowly(loaded_bitmap *buffer, v2 origin, v2 xAxis, v2 yAxis, v4 col
                     loaded_bitmap *texture, loaded_bitmap *normalMap,
                     enviromnet_map *top, 
                     enviromnet_map *middle,
-                    enviromnet_map *bottom)
+                    enviromnet_map *bottom,
+                    real32 pixelsToMeters)
 {
     // NOTE : Premulitplied color alpha!
     color.rgb *= color.a;
 
+    real32 xAxisLength = Length(xAxis);
+    real32 yAxisLength = Length(yAxis);
+
     real32 invXAxisSquare = 1.0f/LengthSq(xAxis);
     real32 invYAxisSquare = 1.0f/LengthSq(yAxis);
     
+    v2 nxAxis = (yAxisLength / xAxisLength) * xAxis;
+    v2 nyAxis = (xAxisLength / yAxisLength) * yAxis;
+
+    // NOTE : NzScale could be a parameter if we want people to
+    // have control over the amount of scaling in the Z direction
+    // that the normals appear to have.
+    real32 nzScale = 0.5f*(xAxisLength + yAxisLength);
+    
+    int32 widthMax = buffer->width - 1;
+    int32 heightMax = buffer->height - 1;
+
+    // TODO : This will need to be specified separately!!
+    real32 originZ = 0.0f;
+    real32 originY = (origin + 0.5f*xAxis + 0.5f*yAxis).y;
+    real32 fixedCastY = originY / heightMax;
+
     uint32 color32 = ((RoundReal32ToInt32(color.a * 255.0f) << 24) |
                     (RoundReal32ToInt32(color.r * 255.0f) << 16) |
                     (RoundReal32ToInt32(color.g * 255.0f) << 8) |
                     (RoundReal32ToInt32(color.b * 255.0f) << 0));
-            
-    int32 widthMax = buffer->width;
-    int32 heightMax = buffer->height;
-
+        
     // Setting these to as low or high as they can so that we can modify
     int minX = widthMax;
     int minY = heightMax;
@@ -280,7 +325,6 @@ DrawRectangleSlowly(loaded_bitmap *buffer, v2 origin, v2 xAxis, v2 yAxis, v4 col
             x < maxX;
             ++x)
         {
-            v2 screenSpaceUV = V2((real32)x/widthMax, (real32)y/heightMax);
 
 #if 1
             v2 pixelPos = V2i(x, y);
@@ -299,6 +343,10 @@ DrawRectangleSlowly(loaded_bitmap *buffer, v2 origin, v2 xAxis, v2 yAxis, v4 col
 
             if((edge0 < 0) && (edge1 < 0) && (edge2 < 0) && (edge3 < 0))
             {
+                // NOTE : This is for the card like normal, and the y value 
+                // should be the fixed value for each card
+                v2 screenSpaceUV = {(real32)x/widthMax, fixedCastY};
+                real32 zDiff = pixelsToMeters * ((real32)y - originY);
 #if 1
                 // Transform to the u-v coordinate system to get the bitmap based pixels!
                 // First of all, we need to divide the value with the legnth of the axis 
@@ -317,8 +365,8 @@ DrawRectangleSlowly(loaded_bitmap *buffer, v2 origin, v2 xAxis, v2 yAxis, v4 col
                 // real32 texelY = (v*(real32)(texture->height - 1) + 0.5f);
 
                 // TODO : Put this back to the original thing!
-                real32 texelX = 1.0f + (u*(real32)(texture->width - 3) + 0.5f);
-                real32 texelY = 1.0f + (v*(real32)(texture->height - 3) + 0.5f);
+                real32 texelX= ((u*(real32)(texture->width - 2)));
+                real32 texelY = ((v*(real32)(texture->height - 2)));
 
                 // What pixel should we use in the bitmap?
                 // NOTE : x and y in texture in integer value
@@ -342,23 +390,31 @@ DrawRectangleSlowly(loaded_bitmap *buffer, v2 origin, v2 xAxis, v2 yAxis, v4 col
 
                     v4 normal = Lerp(Lerp(normal0, fX, normal1), fY, Lerp(normal2, fX, normal3));
 
+                    // NOTE : Because normal is 255 space, put it back to -101 space
                     normal = UnscaleAndBiasNormal(normal);
 
-                    // NOTE : The eye vector is always assumed to be [0, 0, 1]
-                    // which is straigt out of the screen
-                    v3 eyeVector = {0, 0, 1};
+                    // Because this normal axis is based on the xAxis and yAxis,
+                    // recompute it based on those axises
+                    normal.xy = normal.x*nxAxis + normal.y*nyAxis;
+                    // This is not a 100% correct value, but it does the job.
+                    normal.z *= nzScale;
+                    normal.xyz = Normalize(normal.xyz);
 
                     // e^T * N * N means n direction vector wich size of e transposed to N
-                    // The equation below is the simplified version of -e + 2e^T*N*N
+                    // The equation below is the simplified version of -e + 2e^T*N*N where e is eyevector 0, 0, 1
                     // because the x and y component of eyeVector is 0, e dot N is normal.z! 
                     v3 bounceDirection = 2.0f*normal.z*normal.xyz;
                     bounceDirection.z -= 1.0f;
 
+                    bounceDirection.z = -bounceDirection.z;
+
+                    enviromnet_map *farMap = 0;
+                    real32 pZ = originZ + zDiff;
+                    real32 mapZ = 2.0f;
                     // NOTE : Tells us the blend of the enviromnet
-                    real32 tEnvMap = normal.y;
+                    real32 tEnvMap = bounceDirection.y;
                     // NOTE : How much should we grab from the farmap comparing to the middlemap 
                     real32 tFarMap = 0.0f;
-                    enviromnet_map *farMap = 0;
                     if(tEnvMap < -0.5f)
                     {
                         farMap = bottom;
@@ -367,10 +423,6 @@ DrawRectangleSlowly(loaded_bitmap *buffer, v2 origin, v2 xAxis, v2 yAxis, v4 col
                         // if it is -1.0f, it means it's directly looking at the bottom
                         // so the tFarMap should be 1
                         tFarMap = -1.0f - 2.0f*tEnvMap;
-
-                        // NOTE : We want to keep the y value of bounceDirection to be positive
-                        // so that the funtion SampleEnvironmentMap doesn't care about the environment
-                        bounceDirection.y = -bounceDirection.y;
                     }
                     else if(tEnvMap > 0.5f)
                     {
@@ -381,11 +433,16 @@ DrawRectangleSlowly(loaded_bitmap *buffer, v2 origin, v2 xAxis, v2 yAxis, v4 col
                     v3 lightColor = {0, 0, 0};
                     if(farMap)
                     {
-                        v3 farMapColor = SampleEnvironmentMap(screenSpaceUV, bounceDirection, normal.xyz, normal.w, farMap);
+                        real32 distanceFromMapInZ = farMap->pZ - pZ;
+                        v3 farMapColor = SampleEnvironmentMap(screenSpaceUV, bounceDirection, normal.w, farMap, distanceFromMapInZ);
                         lightColor = Lerp(lightColor, tFarMap, farMapColor);
                     }
                     
                     texel.rgb += texel.a*lightColor;
+
+                    // NOTE(casey): Draws the bounce direction
+                    texel.rgb = V3(0.5f, 0.5f, 0.5f) + 0.5f*bounceDirection;
+                    texel.rgb *= texel.a;
                 }
                 // texel = Hadamard(texel, color);
                 texel.r = Clamp01(texel.r);
@@ -590,7 +647,7 @@ RenderGroupToOutput(render_group *renderGroup, loaded_bitmap *outputTarget)
 
                 DrawRectangleSlowly(outputTarget, pos, entry->xAxis, entry->yAxis, entry->color,
                                     entry->bitmap, entry->normalMap,
-                                    entry->top, entry->middle, entry->bottom);
+                                    entry->top, entry->middle, entry->bottom, 1.0f/renderGroup->pixelsToMeters);
 
                 DrawRectangle(outputTarget, pos - dim, pos, color);
 

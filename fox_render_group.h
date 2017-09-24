@@ -21,12 +21,10 @@ struct hero_bitmaps
 
 struct enviromnet_map
 {
-    // NOTE : lod[0] is 2^widthPow2 * 2^heightPow2
-    uint32 widthPow2;
-    uint32 heightPow2;
-    
     // Level of Detail
     loaded_bitmap lod[4];
+
+    real32 pZ;
 };
 
 // NOTE : All the pieces are in the giant buffer 
@@ -109,7 +107,9 @@ struct render_group_entry_rectangle
 struct render_group
 {
     render_basis *defaultBasis;
+    
     real32 metersToPixels;
+    real32 pixelsToMeters;
 
     uint32 maxPushBufferSize;
     uint32 pushBufferSize;
