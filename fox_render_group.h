@@ -109,7 +109,6 @@ struct render_group
     render_basis *defaultBasis;
     
     real32 metersToPixels;
-    real32 pixelsToMeters;
 
     uint32 maxPushBufferSize;
     uint32 pushBufferSize;

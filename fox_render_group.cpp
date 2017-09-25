@@ -102,7 +102,8 @@ BilinearSample(loaded_bitmap *texture, int x, int y)
 }
 
 inline v3 
-SampleEnvironmentMap(v2 screenSpaceUV, v3 sampleDirection, real32 roughness, enviromnet_map *map, real32 distanceFromMapInZ)
+SampleEnvironmentMap(v2 screenSpaceUV, v3 sampleDirection, real32 roughness, 
+                    enviromnet_map *map, real32 distanceFromMapInZ)
 {
     /* NOTE :
 
@@ -126,7 +127,7 @@ SampleEnvironmentMap(v2 screenSpaceUV, v3 sampleDirection, real32 roughness, env
 
     // NOTE  Compute the distance to the map and the scaling
     // factor for meters to UVs
-    real32 uvsPerMeter = 0.1f;
+    real32 uvsPerMeter = 0.01f;
     real32 c = (uvsPerMeter*distanceFromMapInZ) / sampleDirection.y;
     v2 offset = c * V2(sampleDirection.x, sampleDirection.z);
 
@@ -147,7 +148,7 @@ SampleEnvironmentMap(v2 screenSpaceUV, v3 sampleDirection, real32 roughness, env
     real32 fY = tX - (real32)y;
 
 #if 0
-    // NOTE(casey): Turn this on to see where in the map you're sampling!
+    // NOTE : Turn this on to see where in the map you're sampling!
     uint8 *TexelPtr = ((uint8 *)LOD->Memory) + Y*LOD->Pitch + X*sizeof(uint32);
     *(uint32 *)TexelPtr = 0xFFFFFFFF;
 #endif
@@ -439,12 +440,14 @@ DrawRectangleSlowly(loaded_bitmap *buffer, v2 origin, v2 xAxis, v2 yAxis, v4 col
                     }
                     
                     texel.rgb += texel.a*lightColor;
-
-                    // NOTE(casey): Draws the bounce direction
+#if 0
+                    // NOTE : Draws the bounce direction
                     texel.rgb = V3(0.5f, 0.5f, 0.5f) + 0.5f*bounceDirection;
                     texel.rgb *= texel.a;
+#endif
                 }
-                // texel = Hadamard(texel, color);
+                texel = Hadamard(texel, color);
+
                 texel.r = Clamp01(texel.r);
                 texel.g = Clamp01(texel.g);
                 texel.b = Clamp01(texel.b);
@@ -647,7 +650,7 @@ RenderGroupToOutput(render_group *renderGroup, loaded_bitmap *outputTarget)
 
                 DrawRectangleSlowly(outputTarget, pos, entry->xAxis, entry->yAxis, entry->color,
                                     entry->bitmap, entry->normalMap,
-                                    entry->top, entry->middle, entry->bottom, 1.0f/renderGroup->pixelsToMeters);
+                                    entry->top, entry->middle, entry->bottom, 1.0f/renderGroup->metersToPixels);
 
                 DrawRectangle(outputTarget, pos - dim, pos, color);
 

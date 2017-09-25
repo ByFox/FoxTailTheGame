@@ -473,7 +473,7 @@ void Win32ResizeDIBSection(win32_offscreen_buffer *buffer, int width, int height
     // in the bitmap, not the bottom left!
     buffer->info.bmiHeader.biSize = sizeof(buffer->info.bmiHeader);
     buffer->info.bmiHeader.biWidth = buffer->width;
-    buffer->info.bmiHeader.biHeight = -buffer->height;
+    buffer->info.bmiHeader.biHeight = buffer->height;
     buffer->info.bmiHeader.biPlanes = 1;
     buffer->info.bmiHeader.biBitCount = 32;
     buffer->info.bmiHeader.biCompression = BI_RGB;

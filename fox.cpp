@@ -1397,7 +1397,7 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         v2 origin = screenCenter;
 
 #if 1
-        v2 xAxis = 100.0f*V2(Cos(angle), Sin(angle));
+        v2 xAxis = 100.0f*V2(Cos(10.0f*angle), Sin(10.0f*angle));
         v2 yAxis = V2(-xAxis.y, xAxis.x);
 #else
         v2 xAxis = V2(300.0f, 0.0f);
@@ -1408,7 +1408,7 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         // Adding 0.5f* and multiplying 0.5f* to keep the values between 0.0f and 1.0f
         v4 color = V4(0.5f+0.5f*Cos(angle), 0.5f+0.5f*Cos(5.5f*angle), 0.5f+0.5f*Sin(3.5f*angle), 0.5f+0.5f*Cos(2.5f*angle));
 #else
-        v4 color = V4(255.0f, 255.0f, 255.0f, 1.0f);
+        v4 color = V4(1.0f, 1.0f, 1.0f, 1.0f);
 #endif
 
         render_group_entry_coordinate_system *c = 

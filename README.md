@@ -1,2 +1,0 @@
-# FoxTailTheGame
-Fox\
