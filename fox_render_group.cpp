@@ -102,7 +102,8 @@ BilinearSample(loaded_bitmap *texture, int x, int y)
 }
 
 inline v3 
-SampleEnvironmentMap(v2 screenSpaceUV, v3 sampleDirection, real32 roughness, enviromnet_map *map, real32 distanceFromMapInZ)
+SampleEnvironmentMap(v2 screenSpaceUV, v3 sampleDirection, real32 roughness, 
+                    enviromnet_map *map, real32 distanceFromMapInZ)
 {
     /* NOTE :
 
@@ -126,7 +127,7 @@ SampleEnvironmentMap(v2 screenSpaceUV, v3 sampleDirection, real32 roughness, env
 
     // NOTE  Compute the distance to the map and the scaling
     // factor for meters to UVs
-    real32 uvsPerMeter = 0.1f;
+    real32 uvsPerMeter = 0.05f;
     real32 c = (uvsPerMeter*distanceFromMapInZ) / sampleDirection.y;
     v2 offset = c * V2(sampleDirection.x, sampleDirection.z);
 
@@ -144,10 +145,10 @@ SampleEnvironmentMap(v2 screenSpaceUV, v3 sampleDirection, real32 roughness, env
     int32 y = (int32)tY;
 
     real32 fX = tX - (real32)x;
-    real32 fY = tX - (real32)y;
+    real32 fY = tY - (real32)y;
 
 #if 0
-    // NOTE(casey): Turn this on to see where in the map you're sampling!
+    // NOTE : Turn this on to see where in the map you're sampling!
     uint8 *TexelPtr = ((uint8 *)LOD->Memory) + Y*LOD->Pitch + X*sizeof(uint32);
     *(uint32 *)TexelPtr = 0xFFFFFFFF;
 #endif
@@ -439,12 +440,14 @@ DrawRectangleSlowly(loaded_bitmap *buffer, v2 origin, v2 xAxis, v2 yAxis, v4 col
                     }
                     
                     texel.rgb += texel.a*lightColor;
-
-                    // NOTE(casey): Draws the bounce direction
+#if 1
+                    // NOTE : Draws the bounce direction
                     texel.rgb = V3(0.5f, 0.5f, 0.5f) + 0.5f*bounceDirection;
                     texel.rgb *= texel.a;
+#endif
                 }
-                // texel = Hadamard(texel, color);
+                texel = Hadamard(texel, color);
+
                 texel.r = Clamp01(texel.r);
                 texel.g = Clamp01(texel.g);
                 texel.b = Clamp01(texel.b);
@@ -596,14 +599,14 @@ internal v2
 GetRenderEntityBasePoint(render_group *group, render_entry_basis *entryBasis, v2 screenCenter)
 {
     v3 entityBasePos = entryBasis->basis->pos;
-    real32 zFudge = (1.0f + 0.1f*(entityBasePos.z + entryBasis->offsetZ));
+    real32 zFudge = (1.0f + 0.1f*(entityBasePos.z + entryBasis->offset.z));
 
     real32 entityGroundX = screenCenter.x + group->metersToPixels*zFudge*entityBasePos.x;
-    real32 entityGroundY = screenCenter.y - group->metersToPixels*zFudge*entityBasePos.y;
-    real32 entityZ = -group->metersToPixels*entityBasePos.z;
+    real32 entityGroundY = screenCenter.y + group->metersToPixels*zFudge*entityBasePos.y;
+    real32 entityZ = group->metersToPixels*entityBasePos.z;
 
     v2 center = {entityGroundX + entryBasis->offset.x,
-                entityGroundY + entryBasis->offset.y + entryBasis->offsetZ + entryBasis->entityZC*entityZ};
+                entityGroundY + entryBasis->offset.y + entryBasis->offset.z + entityZ};
 
     return center;
 }
@@ -647,7 +650,7 @@ RenderGroupToOutput(render_group *renderGroup, loaded_bitmap *outputTarget)
 
                 DrawRectangleSlowly(outputTarget, pos, entry->xAxis, entry->yAxis, entry->color,
                                     entry->bitmap, entry->normalMap,
-                                    entry->top, entry->middle, entry->bottom, 1.0f/renderGroup->pixelsToMeters);
+                                    entry->top, entry->middle, entry->bottom, 1.0f/renderGroup->metersToPixels);
 
                 DrawRectangle(outputTarget, pos - dim, pos, color);
 
@@ -669,12 +672,11 @@ RenderGroupToOutput(render_group *renderGroup, loaded_bitmap *outputTarget)
             case RenderGroupEntryType_render_group_entry_bitmap:
             {
                 render_group_entry_bitmap *entry = (render_group_entry_bitmap *)data;
-#if 0
-
+#if 1
                 // Every entry of this type should have bitmap!
                 Assert(entry->bitmap);
                 v2 basePos = GetRenderEntityBasePoint(renderGroup, &entry->entryBasis, screenCenter);
-                DrawBitmap(outputTarget, entry->bitmap, basePos.x, basePos.y, entry->a);
+                DrawBitmap(outputTarget, entry->bitmap, basePos.x, basePos.y, entry->color.a);
 
 #endif
                 baseIndex += sizeof(*entry) + sizeof(*header);
@@ -735,35 +737,25 @@ PushRenderElement_(render_group *group, uint32 size, render_group_entry_type typ
     return result;
 }
 
-// Add piece to the piecegroup so when we draw the group, we can draw this piece.
 inline void
-PushPiece(render_group *group, loaded_bitmap *bitmap, v2 offset, real32 offsetZ, 
-        v2 align, v2 dim, v4 color, real32 entityZC)
+PushBitmap(render_group *group, loaded_bitmap *bitmap, v3 offset, v4 color = V4(1, 1, 1, 1))
 {
     render_group_entry_bitmap *piece = PushRenderElement(group, render_group_entry_bitmap);
     if(piece)
     {
-        piece->bitmap = bitmap;
+        v2 align = V2i(bitmap->alignX, bitmap->alignY);
 
+        piece->bitmap = bitmap;
         piece->entryBasis.basis = group->defaultBasis;
-        piece->entryBasis.offset = group->metersToPixels*V2(offset.x, -offset.y) - align;
-        piece->entryBasis.offsetZ = group->metersToPixels*offsetZ;
-        piece->entryBasis.entityZC = entityZC;
+        piece->entryBasis.offset.xy = group->metersToPixels*V2(offset.x, offset.y) - align;
+        piece->entryBasis.offset.z = group->metersToPixels*offset.z;
 
         piece->color = color;
     }
 }
 
 inline void
-PushBitmap(render_group *group, loaded_bitmap *bitmap, 
-        v2 offset, real32 offsetZ, v2 align, real32 alpha = 1.0f, real32 entityZC = 1.0f)
-{
-    PushPiece(group, bitmap, offset, offsetZ, align, V2(0, 0), V4(1.0f, 1.0f, 1.0f, alpha), entityZC);
-}
-
-inline void
-PushRect(render_group *group, v2 offset, real32 offsetZ, 
-            v2 dim, v4 color, real32 entityZC = 1.0f)
+PushRect(render_group *group, v3 offset, v2 dim, v4 color)
 {
     render_group_entry_rectangle *piece = PushRenderElement(group, render_group_entry_rectangle);
     if(piece)
@@ -771,9 +763,8 @@ PushRect(render_group *group, v2 offset, real32 offsetZ,
         v2 halfDim = 0.5f*group->metersToPixels*dim;
 
         piece->entryBasis.basis = group->defaultBasis;
-        piece->entryBasis.offset = group->metersToPixels*V2(offset.x, -offset.y) - halfDim;
-        piece->entryBasis.offsetZ = group->metersToPixels*offsetZ;
-        piece->entryBasis.entityZC = entityZC;
+        piece->entryBasis.offset.xy = group->metersToPixels*V2(offset.x, offset.y) - halfDim;
+        piece->entryBasis.offset.z = group->metersToPixels*offset.z;
 
         piece->color = color;
 
@@ -782,18 +773,17 @@ PushRect(render_group *group, v2 offset, real32 offsetZ,
 }
 
 inline void
-PushRectOutline(render_group *group, v2 offset, real32 offsetZ, 
-            v2 dim, v4 color, real32 entityZC = 1.0f)
+PushRectOutline(render_group *group, v3 offset, v2 dim, v4 color)
 {
     real32 thickness = 0.1f;
     
     // Top and Bottom
-    PushRect(group, offset - V2(0, 0.5f*dim.y), offsetZ, V2(dim.x, thickness), color, entityZC);
-    PushRect(group, offset + V2(0, 0.5f*dim.y), offsetZ, V2(dim.x, thickness), color, entityZC);
+    PushRect(group, offset - V3(0, 0.5f*dim.y, 0), V2(dim.x, thickness), color);
+    PushRect(group, offset + V3(0, 0.5f*dim.y, 0), V2(dim.x, thickness), color);
     
     // Left and Right
-    PushRect(group, offset - V2(0.5f*dim.x, 0), offsetZ, V2(thickness, dim.y), color, entityZC);
-    PushRect(group, offset + V2(0.5f*dim.x, 0), offsetZ, V2(thickness, dim.y), color, entityZC);
+    PushRect(group, offset - V3(0.5f*dim.x, 0, 0), V2(thickness, dim.y), color);
+    PushRect(group, offset + V3(0.5f*dim.x, 0, 0), V2(thickness, dim.y), color);
 }
 
 inline void

@@ -900,7 +900,7 @@ Lerp(v4 a, real32 t, v4 b)
 }
 
 inline v4
-ToV4(v3 xyz, real32 w)
+V4(v3 xyz, real32 w)
 {
     v4 result;
     
