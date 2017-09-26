@@ -127,7 +127,11 @@ SampleEnvironmentMap(v2 screenSpaceUV, v3 sampleDirection, real32 roughness,
 
     // NOTE  Compute the distance to the map and the scaling
     // factor for meters to UVs
+<<<<<<< HEAD
     real32 uvsPerMeter = 0.05f;
+=======
+    real32 uvsPerMeter = 0.01f;
+>>>>>>> 26faef480ad3e753ee3697c69e1df0b199c83189
     real32 c = (uvsPerMeter*distanceFromMapInZ) / sampleDirection.y;
     v2 offset = c * V2(sampleDirection.x, sampleDirection.z);
 
@@ -440,7 +444,11 @@ DrawRectangleSlowly(loaded_bitmap *buffer, v2 origin, v2 xAxis, v2 yAxis, v4 col
                     }
                     
                     texel.rgb += texel.a*lightColor;
+<<<<<<< HEAD
 #if 1
+=======
+#if 0
+>>>>>>> 26faef480ad3e753ee3697c69e1df0b199c83189
                     // NOTE : Draws the bounce direction
                     texel.rgb = V3(0.5f, 0.5f, 0.5f) + 0.5f*bounceDirection;
                     texel.rgb *= texel.a;
