@@ -127,11 +127,7 @@ SampleEnvironmentMap(v2 screenSpaceUV, v3 sampleDirection, real32 roughness,
 
     // NOTE  Compute the distance to the map and the scaling
     // factor for meters to UVs
-<<<<<<< HEAD
-    real32 uvsPerMeter = 0.05f;
-=======
     real32 uvsPerMeter = 0.01f;
->>>>>>> 26faef480ad3e753ee3697c69e1df0b199c83189
     real32 c = (uvsPerMeter*distanceFromMapInZ) / sampleDirection.y;
     v2 offset = c * V2(sampleDirection.x, sampleDirection.z);
 
@@ -309,7 +305,7 @@ DrawRectangleSlowly(loaded_bitmap *buffer, v2 origin, v2 xAxis, v2 yAxis, v4 col
         minY = 0;
     }
     if(maxX > buffer->width)
-    {
+    {   
         maxX = buffer->width;
     }
     if(maxY > buffer->height)
@@ -444,11 +440,7 @@ DrawRectangleSlowly(loaded_bitmap *buffer, v2 origin, v2 xAxis, v2 yAxis, v4 col
                     }
                     
                     texel.rgb += texel.a*lightColor;
-<<<<<<< HEAD
-#if 1
-=======
 #if 0
->>>>>>> 26faef480ad3e753ee3697c69e1df0b199c83189
                     // NOTE : Draws the bounce direction
                     texel.rgb = V3(0.5f, 0.5f, 0.5f) + 0.5f*bounceDirection;
                     texel.rgb *= texel.a;
@@ -603,26 +595,37 @@ DrawBitmap(loaded_bitmap *buffer, loaded_bitmap *sourceBitmap,
     }
 }
 
-internal v2
-GetRenderEntityBasePoint(render_group *group, render_entry_basis *entryBasis, v2 screenCenter)
+struct entity_base_pos_result
 {
-    v3 entityBasePos = entryBasis->basis->pos;
-    real32 zFudge = (1.0f + 0.1f*(entityBasePos.z + entryBasis->offset.z));
+    v2 pos;
+    real32 scale;
+};
 
-    real32 entityGroundX = screenCenter.x + group->metersToPixels*zFudge*entityBasePos.x;
-    real32 entityGroundY = screenCenter.y + group->metersToPixels*zFudge*entityBasePos.y;
+internal entity_base_pos_result
+GetRenderEntityBasePoint(render_group *group, render_entry_basis *entityBasis, v2 screenCenter)
+{
+    entity_base_pos_result result;
+
+    v3 entityBasePos = entityBasis->basis->pos;
+    // Adding 1.0f because we are going to multiply this value this some other value
+    real32 zFudge = (1.0f + 0.1f*(entityBasePos.z + entityBasis->offset.z));
+
+    v2 entityGroundPos = screenCenter + group->metersToPixels*zFudge*entityBasePos.xy + entityBasis->offset.xy;
     real32 entityZ = group->metersToPixels*entityBasePos.z;
 
-    v2 center = {entityGroundX + entryBasis->offset.x,
-                entityGroundY + entryBasis->offset.y + entryBasis->offset.z + entityZ};
+    v2 center = entityGroundPos + V2(0, entityBasePos.z + entityBasis->offset.z);
 
-    return center;
+    result.pos = center;
+    result.scale = zFudge;
+
+    return result;
 }
 
 internal void
 RenderGroupToOutput(render_group *renderGroup, loaded_bitmap *outputTarget)
 {
     v2 screenCenter = {0.5f * (real32)outputTarget->width, 0.5f * (real32)outputTarget->height};
+    real32 pixelsToMeters = 1.0f/renderGroup->metersToPixels;
 
     for(uint32 baseIndex = 0;
         baseIndex < renderGroup->pushBufferSize;
@@ -658,7 +661,7 @@ RenderGroupToOutput(render_group *renderGroup, loaded_bitmap *outputTarget)
 
                 DrawRectangleSlowly(outputTarget, pos, entry->xAxis, entry->yAxis, entry->color,
                                     entry->bitmap, entry->normalMap,
-                                    entry->top, entry->middle, entry->bottom, 1.0f/renderGroup->metersToPixels);
+                                    entry->top, entry->middle, entry->bottom, pixelsToMeters);
 
                 DrawRectangle(outputTarget, pos - dim, pos, color);
 
@@ -680,22 +683,29 @@ RenderGroupToOutput(render_group *renderGroup, loaded_bitmap *outputTarget)
             case RenderGroupEntryType_render_group_entry_bitmap:
             {
                 render_group_entry_bitmap *entry = (render_group_entry_bitmap *)data;
-#if 1
+
+                entity_base_pos_result base = GetRenderEntityBasePoint(renderGroup, &entry->entryBasis, screenCenter);
+#if 0
                 // Every entry of this type should have bitmap!
                 Assert(entry->bitmap);
                 v2 basePos = GetRenderEntityBasePoint(renderGroup, &entry->entryBasis, screenCenter);
                 DrawBitmap(outputTarget, entry->bitmap, basePos.x, basePos.y, entry->color.a);
-
+#else
+                DrawRectangleSlowly(outputTarget, base.pos, 
+                                    V2(base.scale*entry->bitmap->width, 0), 
+                                    V2(0, base.scale*entry->bitmap->height), 
+                                    entry->color,
+                                    entry->bitmap, 0, 0, 0, 0, pixelsToMeters);
 #endif
                 baseIndex += sizeof(*entry) + sizeof(*header);
             }break;
 
             case RenderGroupEntryType_render_group_entry_rectangle:
-            {
+            {   
                 render_group_entry_rectangle *entry = (render_group_entry_rectangle *)data;
                 
-                v2 basePos = GetRenderEntityBasePoint(renderGroup, &entry->entryBasis, screenCenter);
-                DrawRectangle(outputTarget, basePos, basePos + entry->dim, entry->color);
+                entity_base_pos_result base = GetRenderEntityBasePoint(renderGroup, &entry->entryBasis, screenCenter);
+                DrawRectangle(outputTarget, base.pos, base.pos + entry->dim, entry->color);
 
                 baseIndex += sizeof(*entry) + sizeof(*header);        
             }break;

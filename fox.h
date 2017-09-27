@@ -240,6 +240,9 @@ struct game_state
 
     loaded_bitmap diff;
     loaded_bitmap diffNormal;
+
+    // TODO : This is just a experimenting value! Get rid of it later.
+    real32 zOffset;
 };
 
 struct transient_state

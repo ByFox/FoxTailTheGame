@@ -1038,6 +1038,7 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
                 conHero->dZ = 9.0f;
             }
 
+#if 0
             if(controller->actionUp.endedDown)
             {
                 conHero->dSword = V2(0.0f, 1.0f);
@@ -1055,6 +1056,19 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
             {
                 conHero->dSword = V2(1.0f, 0.0f);
             }
+#else
+            real32 zoomRate = 0.0f;
+            if(controller->actionUp.endedDown)
+            {
+                zoomRate = 1.0f;
+            }
+
+            if(controller->actionDown.endedDown)
+            {
+                zoomRate = -1.0f;
+            }
+            gameState->zOffset += zoomRate*input->dtForFrame;
+#endif
         }
     }
 
@@ -1209,7 +1223,8 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
             v3 ddP = {};
 
             render_basis *basis = PushStruct(&tranState->tranArena, render_basis);
-            basis->pos = GetEntityGroundPoint(entity);
+            basis->pos = GetEntityGroundPoint(entity) + V3(0, 0, gameState->zOffset);
+            
             // Set this to basis so that when we PushPiece, the entity basis will be set to the basis
             // because we are setting the piece->basis = group->defaultBasis
             // even if we don't come to this scope, because the defaultBasis is (0, 0, 0), it does not matter
@@ -1370,7 +1385,7 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
             {
                 MoveEntity(gameState, simRegion, entity, input->dtForFrame, &moveSpec, ddP);
             }
-            
+
         }
     }
 
